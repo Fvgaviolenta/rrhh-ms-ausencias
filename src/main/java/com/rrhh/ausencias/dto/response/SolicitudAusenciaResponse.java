@@ -14,5 +14,7 @@ public record SolicitudAusenciaResponse(
         LocalDate fechaFin,
         EstadoSolicitudAusencia estado,
         String motivo,
+        String motivoRechazo,
+        Instant fechaEvaluacion,
         Instant creadoEn
 ) {}

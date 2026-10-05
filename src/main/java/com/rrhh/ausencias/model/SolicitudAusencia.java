@@ -43,6 +43,12 @@ public class SolicitudAusencia {
     @Column(length = 500)
     private String motivo;
 
+    @Column(name = "motivo_rechazo", length = 500)
+    private String motivoRechazo;
+
+    @Column(name = "fecha_evaluacion")
+    private Instant fechaEvaluacion;
+
     @Column(name = "creado_en", nullable = false)
     private Instant creadoEn;
 }
