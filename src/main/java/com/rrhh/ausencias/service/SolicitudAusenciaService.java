@@ -45,10 +45,10 @@ public class SolicitudAusenciaService {
     }
 
     public List<SolicitudAusenciaResponse> listarPorTrabajador(String trabajadorId) {
-        String tenantId = tenantContext.require().tenantId();
-        return solicitudAusenciaRepository.findByTrabajadorIdOrderByCreadoEnDesc(trabajadorId)
+        TenantContext.AuthenticatedUser actor = tenantContext.require();
+        validarAccesoTrabajador(actor, trabajadorId);
+        return solicitudAusenciaRepository.findByTenantIdAndTrabajadorIdOrderByCreadoEnDesc(actor.tenantId(), trabajadorId)
                 .stream()
-                .filter(s -> s.getTenantId().equals(tenantId))
                 .map(this::toResponse)
                 .toList();
     }
@@ -68,16 +68,17 @@ public class SolicitudAusenciaService {
             throw new DomainException(400, "El usuario no tiene trabajador_id asociado");
         }
         
-        return solicitudAusenciaRepository.findByTrabajadorIdOrderByCreadoEnDesc(trabajadorId)
+        return solicitudAusenciaRepository.findByTenantIdAndTrabajadorIdOrderByCreadoEnDesc(actor.tenantId(), trabajadorId)
                 .stream()
-                .filter(s -> s.getTenantId().equals(actor.tenantId()))
                 .map(this::toResponse)
                 .toList();
     }
 
     @Transactional
     public SolicitudAusenciaResponse solicitar(SolicitarAusenciaRequest request) {
-        String tenantId = tenantContext.require().tenantId();
+        TenantContext.AuthenticatedUser actor = tenantContext.require();
+        String tenantId = actor.tenantId();
+        validarAccesoTrabajador(actor, request.trabajadorId());
         
         // Validar fechas
         if (request.fechaFin().isBefore(request.fechaInicio())) {
@@ -86,12 +87,12 @@ public class SolicitudAusenciaService {
         
         // Validar que no exista una solicitud solapada
         List<SolicitudAusencia> solicitudesSolapadas = solicitudAusenciaRepository
-                .findByTrabajadorIdAndEstadoOrderByCreadoEnDesc(
+                .findByTenantIdAndTrabajadorIdAndEstadoOrderByCreadoEnDesc(
+                        tenantId,
                         request.trabajadorId(),
                         EstadoSolicitudAusencia.PENDIENTE
                 )
                 .stream()
-                .filter(s -> s.getTenantId().equals(tenantId))
                 .filter(s -> fechasSolapadas(
                         s.getFechaInicio(),
                         s.getFechaFin(),
@@ -187,5 +188,12 @@ public class SolicitudAusenciaService {
 
     private boolean fechasSolapadas(LocalDate inicio1, LocalDate fin1, LocalDate inicio2, LocalDate fin2) {
         return !fin1.isBefore(inicio2) && !fin2.isBefore(inicio1);
+    }
+
+    private void validarAccesoTrabajador(TenantContext.AuthenticatedUser actor, String trabajadorId) {
+        if (Roles.TRABAJADOR.equals(Roles.authorityFromClaim(actor.role()))
+                && (actor.trabajadorId() == null || !actor.trabajadorId().equals(trabajadorId))) {
+            throw new DomainException(403, "No puede acceder a las ausencias de otro trabajador");
+        }
     }
 }

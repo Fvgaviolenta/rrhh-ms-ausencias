@@ -10,11 +10,13 @@ import java.util.Optional;
 public interface SolicitudAusenciaRepository extends JpaRepository<SolicitudAusencia, String> {
     List<SolicitudAusencia> findByTenantIdOrderByCreadoEnDesc(String tenantId);
 
-    List<SolicitudAusencia> findByTrabajadorIdOrderByCreadoEnDesc(String trabajadorId);
+    List<SolicitudAusencia> findByTenantIdAndTrabajadorIdOrderByCreadoEnDesc(
+            String tenantId, String trabajadorId);
 
     Optional<SolicitudAusencia> findByIdAndTenantId(String id, String tenantId);
 
-    List<SolicitudAusencia> findByTrabajadorIdAndEstadoOrderByCreadoEnDesc(
+    List<SolicitudAusencia> findByTenantIdAndTrabajadorIdAndEstadoOrderByCreadoEnDesc(
+            String tenantId,
             String trabajadorId,
             EstadoSolicitudAusencia estado
     );
