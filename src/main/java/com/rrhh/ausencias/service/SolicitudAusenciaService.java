@@ -54,10 +54,11 @@ public class SolicitudAusenciaService {
     }
 
     public SolicitudAusenciaResponse obtener(String id) {
-        String tenantId = tenantContext.require().tenantId();
-        return solicitudAusenciaRepository.findByIdAndTenantId(id, tenantId)
-                .map(this::toResponse)
+        TenantContext.AuthenticatedUser actor = tenantContext.require();
+        SolicitudAusencia solicitud = solicitudAusenciaRepository.findByIdAndTenantId(id, actor.tenantId())
                 .orElseThrow(() -> new DomainException(404, "Solicitud no encontrada"));
+        validarAccesoTrabajador(actor, solicitud.getTrabajadorId());
+        return toResponse(solicitud);
     }
 
     public List<SolicitudAusenciaResponse> misSolicitudes() {
