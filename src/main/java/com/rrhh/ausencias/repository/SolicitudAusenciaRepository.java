@@ -1,6 +1,7 @@
 package com.rrhh.ausencias.repository;
 
 import com.rrhh.ausencias.model.SolicitudAusencia;
+import com.rrhh.ausencias.model.EstadoSolicitudAusencia;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -12,4 +13,15 @@ public interface SolicitudAusenciaRepository extends JpaRepository<SolicitudAuse
     List<SolicitudAusencia> findByTenantIdAndTrabajadorIdOrderByCreadoEnDesc(String tenantId, String trabajadorId);
 
     Optional<SolicitudAusencia> findByIdAndTenantId(String id, String tenantId);
+
+    List<SolicitudAusencia> findByTenantIdAndTrabajadorIdAndEstadoOrderByCreadoEnDesc(
+            String tenantId,
+            String trabajadorId,
+            EstadoSolicitudAusencia estado
+    );
+
+    List<SolicitudAusencia> findByTenantIdAndEstadoOrderByCreadoEnDesc(
+            String tenantId,
+            EstadoSolicitudAusencia estado
+    );
 }

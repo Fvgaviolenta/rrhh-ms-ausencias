@@ -37,6 +37,17 @@ public class SolicitudAusenciaController {
         return ApiResponse.ok(solicitudAusenciaService.listarPorTenant(), "Solicitudes de ausencia del tenant");
     }
 
+    @GetMapping("/plataforma/tenants/{tenant_id}/ausencias")
+    @PreAuthorize("hasRole('OPERADOR_SAAS')")
+    public ApiResponse<List<SolicitudAusenciaResponse>> listarPorTenantPlataforma(
+            @PathVariable("tenant_id") String tenantId
+    ) {
+        return ApiResponse.ok(
+                solicitudAusenciaService.listarPorTenantPlataforma(tenantId),
+                "Ausencias del tenant solicitado"
+        );
+    }
+
     @GetMapping("/solicitudes-ausencia/mias")
     @PreAuthorize("isAuthenticated()")
     public ApiResponse<List<SolicitudAusenciaResponse>> listarMias() {
