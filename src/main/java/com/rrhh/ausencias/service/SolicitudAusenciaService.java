@@ -44,6 +44,12 @@ public class SolicitudAusenciaService {
                 .toList();
     }
 
+    public List<SolicitudAusenciaResponse> listarPorTenantPlataforma(String tenantId) {
+        exigirOperadorSaas();
+        return solicitudAusenciaRepository.findByTenantIdOrderByCreadoEnDesc(tenantId)
+                .stream().map(this::toResponse).toList();
+    }
+
     public List<SolicitudAusenciaResponse> listarPorTrabajador(String trabajadorId) {
         TenantContext.AuthenticatedUser actor = tenantContext.require();
         validarAccesoTrabajador(actor, trabajadorId);
@@ -185,6 +191,12 @@ public class SolicitudAusenciaService {
                 solicitud.getMotivo(),
                 solicitud.getCreadoEn()
         );
+    }
+
+    private void exigirOperadorSaas() {
+        if (!Roles.OPERADOR_SAAS.equals(Roles.authorityFromClaim(tenantContext.current().role()))) {
+            throw new DomainException(403, "Acceso exclusivo para el operador SaaS");
+        }
     }
 
     private boolean fechasSolapadas(LocalDate inicio1, LocalDate fin1, LocalDate inicio2, LocalDate fin2) {
