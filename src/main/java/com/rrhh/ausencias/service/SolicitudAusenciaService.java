@@ -1,7 +1,8 @@
 package com.rrhh.ausencias.service;
 
-import com.rrhh.ausencias.dto.request.RechazarAusenciaRequest;
-import com.rrhh.ausencias.dto.request.SolicitarAusenciaRequest;
+import com.rrhh.ausencias.dto.request.CrearSolicitudAusenciaRequest;
+import com.rrhh.ausencias.dto.request.EvaluarSolicitudAusenciaRequest;
+import com.rrhh.ausencias.dto.request.SolicitarAusenciaFrontendRequest;
 import com.rrhh.ausencias.dto.response.ServiceStatusResponse;
 import com.rrhh.ausencias.dto.response.SolicitudAusenciaResponse;
 import com.rrhh.ausencias.exception.DomainException;
@@ -13,6 +14,7 @@ import com.rrhh.ausencias.security.TenantContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -47,136 +49,137 @@ public class SolicitudAusenciaService {
     public List<SolicitudAusenciaResponse> listarPorTenantPlataforma(String tenantId) {
         exigirOperadorSaas();
         return solicitudAusenciaRepository.findByTenantIdOrderByCreadoEnDesc(tenantId)
-                .stream().map(this::toResponse).toList();
+                .stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    public List<SolicitudAusenciaResponse> listarMias() {
+        TenantContext.AuthenticatedUser actor = tenantContext.require();
+        if (actor.trabajadorId() == null || actor.trabajadorId().isBlank()) {
+            throw new DomainException(403, "El token no incluye trabajador_id");
+        }
+        return solicitudAusenciaRepository
+                .findByTenantIdAndTrabajadorIdOrderByCreadoEnDesc(actor.tenantId(), actor.trabajadorId())
+                .stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    public SolicitudAusenciaResponse obtener(String solicitudId) {
+        TenantContext.AuthenticatedUser actor = tenantContext.require();
+        SolicitudAusencia solicitud = solicitudAusenciaRepository.findByIdAndTenantId(solicitudId, actor.tenantId())
+                .orElseThrow(() -> new DomainException(404, "Solicitud no encontrada"));
+        String authority = Roles.authorityFromClaim(actor.role());
+        if (Roles.TRABAJADOR.equals(authority) && !solicitud.getTrabajadorId().equals(actor.trabajadorId())) {
+            throw new DomainException(403, "Un trabajador no ve solicitudes de otros");
+        }
+        return toResponse(solicitud);
     }
 
     public List<SolicitudAusenciaResponse> listarPorTrabajador(String trabajadorId) {
         TenantContext.AuthenticatedUser actor = tenantContext.require();
-        validarAccesoTrabajador(actor, trabajadorId);
-        return solicitudAusenciaRepository.findByTenantIdAndTrabajadorIdOrderByCreadoEnDesc(actor.tenantId(), trabajadorId)
-                .stream()
-                .map(this::toResponse)
-                .toList();
-    }
-
-    public SolicitudAusenciaResponse obtener(String id) {
-        TenantContext.AuthenticatedUser actor = tenantContext.require();
-        SolicitudAusencia solicitud = solicitudAusenciaRepository.findByIdAndTenantId(id, actor.tenantId())
-                .orElseThrow(() -> new DomainException(404, "Solicitud no encontrada"));
-        validarAccesoTrabajador(actor, solicitud.getTrabajadorId());
-        return toResponse(solicitud);
-    }
-
-    public List<SolicitudAusenciaResponse> misSolicitudes() {
-        TenantContext.AuthenticatedUser actor = tenantContext.require();
-        String trabajadorId = actor.trabajadorId();
-        
-        if (trabajadorId == null) {
-            throw new DomainException(400, "El usuario no tiene trabajador_id asociado");
+        String authority = Roles.authorityFromClaim(actor.role());
+        if (Roles.TRABAJADOR.equals(authority)) {
+            throw new DomainException(403, "Un trabajador no puede listar solicitudes de otro");
         }
-        
-        return solicitudAusenciaRepository.findByTenantIdAndTrabajadorIdOrderByCreadoEnDesc(actor.tenantId(), trabajadorId)
+        return solicitudAusenciaRepository
+                .findByTenantIdAndTrabajadorIdOrderByCreadoEnDesc(actor.tenantId(), trabajadorId)
                 .stream()
                 .map(this::toResponse)
                 .toList();
     }
 
     @Transactional
-    public SolicitudAusenciaResponse solicitar(SolicitarAusenciaRequest request) {
+    public SolicitudAusenciaResponse solicitar(SolicitarAusenciaFrontendRequest request) {
         TenantContext.AuthenticatedUser actor = tenantContext.require();
-        String tenantId = actor.tenantId();
-        validarAccesoTrabajador(actor, request.trabajadorId());
-        
-        // Validar fechas
-        if (request.fechaFin().isBefore(request.fechaInicio())) {
-            throw new DomainException(400, "La fecha de término no puede ser anterior a la fecha de inicio");
+        String authority = Roles.authorityFromClaim(actor.role());
+        String trabajadorId;
+        if (Roles.TRABAJADOR.equals(authority)) {
+            if (actor.trabajadorId() == null || actor.trabajadorId().isBlank()) {
+                throw new DomainException(403, "El token no incluye trabajador_id");
+            }
+            trabajadorId = actor.trabajadorId();
+        } else {
+            if (request.trabajadorId() == null || request.trabajadorId().isBlank()) {
+                throw new DomainException(400, "El trabajador es obligatorio", "trabajadorId");
+            }
+            trabajadorId = request.trabajadorId();
         }
-        
-        // Validar que no exista una solicitud solapada
-        List<SolicitudAusencia> solicitudesSolapadas = solicitudAusenciaRepository
-                .findByTenantIdAndTrabajadorIdAndEstadoOrderByCreadoEnDesc(
-                        tenantId,
-                        request.trabajadorId(),
-                        EstadoSolicitudAusencia.PENDIENTE
-                )
-                .stream()
-                .filter(s -> fechasSolapadas(
-                        s.getFechaInicio(),
-                        s.getFechaFin(),
-                        request.fechaInicio(),
-                        request.fechaFin()
-                ))
-                .toList();
-        
-        if (!solicitudesSolapadas.isEmpty()) {
-            throw new DomainException(409, "Ya existe una solicitud de ausencia solapada pendiente");
+        LocalDate fin = request.fechaFin() != null ? request.fechaFin() : request.fechaInicio();
+        if (fin.isBefore(request.fechaInicio())) {
+            throw new DomainException(400, "La fecha fin no puede ser anterior al inicio", "fechaFin");
         }
-        
         SolicitudAusencia solicitud = new SolicitudAusencia();
         solicitud.setId(UUID.randomUUID().toString());
-        solicitud.setTenantId(tenantId);
-        solicitud.setTrabajadorId(request.trabajadorId());
-        solicitud.setTipo(request.tipo());
+        solicitud.setTenantId(actor.tenantId());
+        solicitud.setTrabajadorId(trabajadorId);
+        solicitud.setTipo(request.tipo().trim());
         solicitud.setFechaInicio(request.fechaInicio());
-        solicitud.setFechaFin(request.fechaFin());
+        solicitud.setFechaFin(fin);
+        solicitud.setMotivo(request.motivo() == null ? null : request.motivo().trim());
         solicitud.setEstado(EstadoSolicitudAusencia.PENDIENTE);
-        solicitud.setMotivo(request.motivo());
-        solicitud.setCreadoEn(java.time.Instant.now());
-        
-        solicitudAusenciaRepository.save(solicitud);
-        
-        // TODO: Publicar evento de solicitud creada en RabbitMQ
-        
-        return toResponse(solicitud);
+        solicitud.setCreadoEn(Instant.now());
+        return toResponse(solicitudAusenciaRepository.save(solicitud));
     }
 
     @Transactional
-    public SolicitudAusenciaResponse aprobar(String id) {
-        String tenantId = tenantContext.require().tenantId();
-        
-        SolicitudAusencia solicitud = solicitudAusenciaRepository.findByIdAndTenantId(id, tenantId)
-                .orElseThrow(() -> new DomainException(404, "Solicitud no encontrada"));
-        
-        if (solicitud.getEstado() != EstadoSolicitudAusencia.PENDIENTE) {
-            throw new DomainException(400, "Solo se pueden aprobar solicitudes en estado PENDIENTE");
-        }
-        
-        // Validar que no sea auto-aprobación
-        String trabajadorId = tenantContext.require().trabajadorId();
-        if (trabajadorId != null && trabajadorId.equals(solicitud.getTrabajadorId())) {
-            throw new DomainException(403, "No puedes aprobar tu propia solicitud");
-        }
-        
-        solicitud.setEstado(EstadoSolicitudAusencia.APROBADO);
-        solicitudAusenciaRepository.save(solicitud);
-        
-        // TODO: Publicar evento de solicitud aprobada en RabbitMQ
-        
-        return toResponse(solicitud);
+    public SolicitudAusenciaResponse aprobar(String solicitudId) {
+        return evaluar(solicitudId, new EvaluarSolicitudAusenciaRequest(EstadoSolicitudAusencia.APROBADO, null));
     }
 
     @Transactional
-    public SolicitudAusenciaResponse rechazar(String id, RechazarAusenciaRequest request) {
-        String tenantId = tenantContext.require().tenantId();
-        
-        SolicitudAusencia solicitud = solicitudAusenciaRepository.findByIdAndTenantId(id, tenantId)
-                .orElseThrow(() -> new DomainException(404, "Solicitud no encontrada"));
-        
-        if (solicitud.getEstado() != EstadoSolicitudAusencia.PENDIENTE) {
-            throw new DomainException(400, "Solo se pueden rechazar solicitudes en estado PENDIENTE");
+    public SolicitudAusenciaResponse rechazar(String solicitudId, String motivo) {
+        return evaluar(solicitudId, new EvaluarSolicitudAusenciaRequest(EstadoSolicitudAusencia.RECHAZADO, motivo));
+    }
+
+    @Transactional
+    public SolicitudAusenciaResponse crear(CrearSolicitudAusenciaRequest request) {
+        TenantContext.AuthenticatedUser actor = tenantContext.require();
+        if (actor.trabajadorId() == null || actor.trabajadorId().isBlank()) {
+            throw new DomainException(403, "El token no incluye trabajador_id");
         }
-        
-        solicitud.setEstado(EstadoSolicitudAusencia.RECHAZADO);
-        solicitud.setMotivo(request.motivo());
-        solicitudAusenciaRepository.save(solicitud);
-        
-        // TODO: Publicar evento de solicitud rechazada en RabbitMQ
-        
-        return toResponse(solicitud);
+        SolicitudAusencia solicitud = new SolicitudAusencia();
+        solicitud.setId(UUID.randomUUID().toString());
+        solicitud.setTenantId(actor.tenantId());
+        solicitud.setTrabajadorId(actor.trabajadorId());
+        solicitud.setTipo(request.tipo().trim());
+        solicitud.setFechaInicio(request.fecha());
+        solicitud.setFechaFin(request.fecha());
+        solicitud.setMotivo(request.motivo().trim());
+        solicitud.setEstado(EstadoSolicitudAusencia.PENDIENTE);
+        solicitud.setCreadoEn(Instant.now());
+        return toResponse(solicitudAusenciaRepository.save(solicitud));
+    }
+
+    @Transactional
+    public SolicitudAusenciaResponse evaluar(String solicitudId, EvaluarSolicitudAusenciaRequest request) {
+        TenantContext.AuthenticatedUser actor = tenantContext.require();
+        if (request.estado() != EstadoSolicitudAusencia.APROBADO && request.estado() != EstadoSolicitudAusencia.RECHAZADO) {
+            throw new DomainException(400, "Solo se puede aprobar o rechazar", "estado");
+        }
+        if (request.estado() == EstadoSolicitudAusencia.RECHAZADO
+                && (request.motivoRechazo() == null || request.motivoRechazo().isBlank())) {
+            throw new DomainException(400, "El rechazo requiere un motivo", "motivo_rechazo");
+        }
+        SolicitudAusencia solicitud = solicitudAusenciaRepository.findByIdAndTenantId(solicitudId, actor.tenantId())
+                .orElseThrow(() -> new DomainException(404, "Solicitud no encontrada"));
+        if (solicitud.getEstado() != EstadoSolicitudAusencia.PENDIENTE) {
+            throw new DomainException(400, "La solicitud ya fue evaluada", "estado");
+        }
+        if (actor.trabajadorId() != null && actor.trabajadorId().equals(solicitud.getTrabajadorId())) {
+            throw new DomainException(403, "No puedes evaluar tu propia ausencia");
+        }
+        solicitud.setEstado(request.estado());
+        solicitud.setFechaEvaluacion(Instant.now());
+        if (request.estado() == EstadoSolicitudAusencia.RECHAZADO) {
+            solicitud.setMotivoRechazo(request.motivoRechazo().trim());
+        }
+        return toResponse(solicitudAusenciaRepository.save(solicitud));
     }
 
     public ServiceStatusResponse status() {
-        return new ServiceStatusResponse("rrhh-ausencias", SERVICE_VERSION, "OPERATIVO");
+        return new ServiceStatusResponse("rrhh-ausencias", SERVICE_VERSION, "UP");
     }
 
     private SolicitudAusenciaResponse toResponse(SolicitudAusencia solicitud) {
@@ -189,24 +192,16 @@ public class SolicitudAusenciaService {
                 solicitud.getFechaFin(),
                 solicitud.getEstado(),
                 solicitud.getMotivo(),
+                solicitud.getMotivoRechazo(),
+                solicitud.getFechaEvaluacion(),
                 solicitud.getCreadoEn()
         );
     }
 
     private void exigirOperadorSaas() {
-        if (!Roles.OPERADOR_SAAS.equals(Roles.authorityFromClaim(tenantContext.current().role()))) {
+        TenantContext.AuthenticatedUser actor = tenantContext.require();
+        if (!Roles.OPERADOR_SAAS.equals(Roles.authorityFromClaim(actor.role()))) {
             throw new DomainException(403, "Acceso exclusivo para el operador SaaS");
-        }
-    }
-
-    private boolean fechasSolapadas(LocalDate inicio1, LocalDate fin1, LocalDate inicio2, LocalDate fin2) {
-        return !fin1.isBefore(inicio2) && !fin2.isBefore(inicio1);
-    }
-
-    private void validarAccesoTrabajador(TenantContext.AuthenticatedUser actor, String trabajadorId) {
-        if (Roles.TRABAJADOR.equals(Roles.authorityFromClaim(actor.role()))
-                && (actor.trabajadorId() == null || !actor.trabajadorId().equals(trabajadorId))) {
-            throw new DomainException(403, "No puede acceder a las ausencias de otro trabajador");
         }
     }
 }
