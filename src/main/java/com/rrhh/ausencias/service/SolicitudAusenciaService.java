@@ -25,13 +25,16 @@ public class SolicitudAusenciaService {
 
     private final SolicitudAusenciaRepository solicitudAusenciaRepository;
     private final TenantContext tenantContext;
+    private final OutboxPublisher outboxPublisher;
 
     public SolicitudAusenciaService(
             SolicitudAusenciaRepository solicitudAusenciaRepository,
-            TenantContext tenantContext
+            TenantContext tenantContext,
+            OutboxPublisher outboxPublisher
     ) {
         this.solicitudAusenciaRepository = solicitudAusenciaRepository;
         this.tenantContext = tenantContext;
+        this.outboxPublisher = outboxPublisher;
     }
 
     public List<SolicitudAusenciaResponse> listarPorTenant() {
@@ -120,7 +123,10 @@ public class SolicitudAusenciaService {
         solicitud.setMotivo(request.motivo() == null ? null : request.motivo().trim());
         solicitud.setEstado(EstadoSolicitudAusencia.PENDIENTE);
         solicitud.setCreadoEn(Instant.now());
-        return toResponse(solicitudAusenciaRepository.save(solicitud));
+        solicitudAusenciaRepository.save(solicitud);
+        outboxPublisher.registrar("ausencia.solicitada", solicitud.getTenantId(), solicitud.getId(),
+                java.util.Map.of("trabajadorId", solicitud.getTrabajadorId(), "solicitudId", solicitud.getId()));
+        return toResponse(solicitud);
     }
 
     @Transactional
@@ -149,7 +155,10 @@ public class SolicitudAusenciaService {
         solicitud.setMotivo(request.motivo().trim());
         solicitud.setEstado(EstadoSolicitudAusencia.PENDIENTE);
         solicitud.setCreadoEn(Instant.now());
-        return toResponse(solicitudAusenciaRepository.save(solicitud));
+        solicitudAusenciaRepository.save(solicitud);
+        outboxPublisher.registrar("ausencia.solicitada", solicitud.getTenantId(), solicitud.getId(),
+                java.util.Map.of("trabajadorId", solicitud.getTrabajadorId(), "solicitudId", solicitud.getId()));
+        return toResponse(solicitud);
     }
 
     @Transactional
@@ -175,7 +184,13 @@ public class SolicitudAusenciaService {
         if (request.estado() == EstadoSolicitudAusencia.RECHAZADO) {
             solicitud.setMotivoRechazo(request.motivoRechazo().trim());
         }
-        return toResponse(solicitudAusenciaRepository.save(solicitud));
+        solicitudAusenciaRepository.save(solicitud);
+        String eventType = request.estado() == EstadoSolicitudAusencia.APROBADO ? "ausencia.aprobada" : "ausencia.rechazada";
+        java.util.Map<String, Object> payload = new java.util.HashMap<>();
+        payload.put("trabajadorId", solicitud.getTrabajadorId()); payload.put("solicitudId", solicitud.getId());
+        if (solicitud.getMotivoRechazo() != null) payload.put("motivoRechazo", solicitud.getMotivoRechazo());
+        outboxPublisher.registrar(eventType, solicitud.getTenantId(), solicitud.getId(), payload);
+        return toResponse(solicitud);
     }
 
     public ServiceStatusResponse status() {
