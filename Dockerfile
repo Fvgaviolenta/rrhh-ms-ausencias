@@ -1,9 +1,17 @@
 FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /app
 COPY pom.xml .
-RUN mvn -q -B -DskipTests dependency:go-offline
+# Maven Central puede responder transitoriamente durante un build limpio de GitHub Actions.
+# Reintentamos la descarga de dependencias antes de fallar la construcción de la imagen.
+RUN set -eu; \
+    for attempt in 1 2 3; do \
+      mvn -q -B -ntp -DskipTests -Dmaven.wagon.http.retryHandler.count=5 dependency:go-offline && exit 0; \
+      echo "No fue posible descargar dependencias (intento ${attempt}/3). Reintentando..."; \
+      sleep $((attempt * 5)); \
+    done; \
+    exit 1
 COPY src ./src
-RUN mvn -q -B -DskipTests package && \
+RUN mvn -q -B -ntp -DskipTests -Dmaven.wagon.http.retryHandler.count=5 package && \
     JAR="$(ls target/*.jar | head -n 1)" && \
     cp "$JAR" /app/app.jar
 
