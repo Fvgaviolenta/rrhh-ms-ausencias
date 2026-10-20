@@ -14,10 +14,10 @@ import java.time.Instant;
 @Entity
 @Table(name = "ausencias_outbox_event")
 public class OutboxEvent {
-    @Id @Column(length = 36) private String id;
-    @Column(name = "tenant_id", nullable = false, length = 36) private String tenantId;
+    @Id @Column(length = 36, columnDefinition = "CHAR(36)") private String id;
+    @Column(name = "tenant_id", nullable = false, length = 36, columnDefinition = "CHAR(36)") private String tenantId;
     @Column(name = "event_type", nullable = false, length = 80) private String eventType;
-    @Column(name = "aggregate_id", nullable = false, length = 36) private String aggregateId;
+    @Column(name = "aggregate_id", nullable = false, length = 36, columnDefinition = "CHAR(36)") private String aggregateId;
     @Column(nullable = false, columnDefinition = "TEXT") private String payload;
     @Column(nullable = false, length = 20) private String estado;
     @Column(nullable = false) private int intentos;

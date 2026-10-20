@@ -30,6 +30,8 @@ class SolicitudAusenciaServiceTest {
     private SolicitudAusenciaRepository solicitudAusenciaRepository;
     @Mock
     private TenantContext tenantContext;
+    @Mock
+    private OutboxPublisher outboxPublisher;
     @InjectMocks
     private SolicitudAusenciaService service;
 

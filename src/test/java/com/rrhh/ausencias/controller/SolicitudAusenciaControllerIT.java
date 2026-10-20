@@ -46,9 +46,26 @@ class SolicitudAusenciaControllerIT {
                 .andExpect(jsonPath("$.datos").isArray());
     }
 
+    private String crearSolicitudDePrueba() throws Exception {
+        SolicitarAusenciaRequest request = new SolicitarAusenciaRequest(
+                "test-trabajador-id",
+                "Vacaciones",
+                LocalDate.of(2024, 2, 1),
+                LocalDate.of(2024, 2, 15),
+                "Vacaciones anuales"
+        );
+        String respuesta = mockMvc.perform(post("/api/v1/ausencias/solicitar")
+                        .header("Authorization", "Bearer test-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(respuesta).path("datos").path("id").asText();
+    }
+
     @Test
     void obtenerSolicitudPorId() throws Exception {
-        mockMvc.perform(get("/api/v1/ausencias/test-solicitud-id")
+        mockMvc.perform(get("/api/v1/ausencias/" + crearSolicitudDePrueba())
                         .header("Authorization", "Bearer test-token"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.datos").exists());
@@ -57,7 +74,7 @@ class SolicitudAusenciaControllerIT {
     @Test
     void misSolicitudes() throws Exception {
         mockMvc.perform(get("/api/v1/ausencias/mis-solicitudes")
-                        .header("Authorization", "Bearer test-token"))
+                        .header("Authorization", "Bearer trabajador"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.datos").isArray());
     }
@@ -77,7 +94,7 @@ class SolicitudAusenciaControllerIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.mensaje").value("Solicitud de ausencia creada"));
+                .andExpect(jsonPath("$.mensaje").value("Solicitud enviada"));
     }
 
     @Test
@@ -99,7 +116,7 @@ class SolicitudAusenciaControllerIT {
 
     @Test
     void aprobarSolicitud() throws Exception {
-        mockMvc.perform(patch("/api/v1/ausencias/test-solicitud-id/aprobar")
+        mockMvc.perform(patch("/api/v1/ausencias/" + crearSolicitudDePrueba() + "/aprobar")
                         .header("Authorization", "Bearer test-token"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.mensaje").value("Solicitud aprobada"));
@@ -109,7 +126,7 @@ class SolicitudAusenciaControllerIT {
     void rechazarSolicitud() throws Exception {
         RechazarAusenciaRequest request = new RechazarAusenciaRequest("No cumple requisitos");
 
-        mockMvc.perform(patch("/api/v1/ausencias/test-solicitud-id/rechazar")
+        mockMvc.perform(patch("/api/v1/ausencias/" + crearSolicitudDePrueba() + "/rechazar")
                         .header("Authorization", "Bearer test-token")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
@@ -135,7 +152,7 @@ class SolicitudAusenciaControllerIT {
         mockMvc.perform(get("/api/v1/ausencias/status").header("Authorization", "Bearer test-token"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.datos.service").value("rrhh-ausencias"))
-                .andExpect(jsonPath("$.datos.status").value("OPERATIVO"));
+                .andExpect(jsonPath("$.datos.status").value("UP"));
     }
 
     @Test
