@@ -7,12 +7,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /** S3: alcance de AdminPlataforma y OperadorSaaS en la ruta de plataforma; fuera de alcance, 404. */
@@ -84,5 +86,18 @@ class PlataformaAlcanceIT {
     @Test
     void rolDeEmpresaNoUsaLaRutaDePlataforma() throws Exception {
         pedir("admin", A).andExpect(status().isForbidden());
+    }
+
+    /** Fuera de alcance de la spec: los roles de plataforma no crean ni leen ausencias de una empresa. */
+    @Test
+    void rolDePlataformaNoSolicitaNiLeeAusenciasDeUnaEmpresa() throws Exception {
+        String cuerpo = "{\"trabajador_id\":\"ffffffff-ffff-ffff-ffff-ffffffffffff\",\"tipo\":\"VACACIONES\",\"fecha_inicio\":\"2026-12-01\"}";
+        for (String token : new String[]{"admin-plataforma-con-tenant", "operador-grupo-con-tenant"}) {
+            mockMvc.perform(post("/api/v1/ausencias/solicitar").header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON).content(cuerpo))
+                    .andExpect(status().isForbidden());
+            mockMvc.perform(get("/api/v1/ausencias/{id}", "no-existe").header("Authorization", "Bearer " + token))
+                    .andExpect(status().isForbidden());
+        }
     }
 }

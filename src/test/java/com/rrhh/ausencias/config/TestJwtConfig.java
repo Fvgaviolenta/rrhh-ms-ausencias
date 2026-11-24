@@ -30,6 +30,8 @@ public class TestJwtConfig {
             case "operador-grupo" -> conUserId(buildJwt("op", "operador.grupo@rrhh.local", null, "OperadorSaaS", null), OPERADOR_GRUPO_ID);
             case "operador-sin-grupo" -> conUserId(buildJwt("op-solo", "operador.solo@rrhh.local", null, "OperadorSaaS", null),
                     "dddddddd-0000-0000-0000-000000000001");
+            case "operador-grupo-con-tenant" -> conUserId(buildJwt("op", "operador.grupo@rrhh.local", TENANT_SUSPENDIBLE, "OperadorSaaS", null),
+                    OPERADOR_GRUPO_ID);
             case "operador-grupo-sin-claim" -> buildJwt(OPERADOR_SIN_CLAIM_SUB, "operador.grupo@rrhh.local", null, "OperadorSaaS", null);
             default -> buildJwt("a", "admin.demo@rrhh.local", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "Admin de RRHH", null);
         };
