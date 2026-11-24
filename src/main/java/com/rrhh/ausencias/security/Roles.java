@@ -1,6 +1,7 @@
 package com.rrhh.ausencias.security;
 
 public final class Roles {
+    public static final String ADMIN_PLATAFORMA = "ROLE_ADMIN_PLATAFORMA";
     public static final String OPERADOR_SAAS = "ROLE_OPERADOR_SAAS";
     public static final String SUPERADMIN = "ROLE_SUPERADMIN";
     public static final String ADMIN_RRHH = "ROLE_ADMIN_RRHH";
@@ -14,6 +15,7 @@ public final class Roles {
             return TRABAJADOR;
         }
         return switch (roleClaim.trim()) {
+            case "AdminPlataforma", "ROLE_ADMIN_PLATAFORMA" -> ADMIN_PLATAFORMA;
             case "OperadorSaaS", "ROLE_OPERADOR_SAAS" -> OPERADOR_SAAS;
             case "SuperAdmin", "ROLE_SUPERADMIN" -> SUPERADMIN;
             case "Admin de RRHH", "ROLE_ADMIN_RRHH" -> ADMIN_RRHH;
@@ -24,6 +26,7 @@ public final class Roles {
 
     public static String claimFromAuthority(String authority) {
         return switch (authority) {
+            case ADMIN_PLATAFORMA -> "AdminPlataforma";
             case OPERADOR_SAAS -> "OperadorSaaS";
             case SUPERADMIN -> "SuperAdmin";
             case ADMIN_RRHH -> "Admin de RRHH";

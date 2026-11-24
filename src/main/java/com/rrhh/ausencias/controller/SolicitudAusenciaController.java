@@ -38,7 +38,7 @@ public class SolicitudAusenciaController {
     }
 
     @GetMapping("/plataforma/tenants/{tenant_id}/ausencias")
-    @PreAuthorize("hasRole('OPERADOR_SAAS')")
+    @PreAuthorize("hasAnyRole('OPERADOR_SAAS','ADMIN_PLATAFORMA')")
     public ApiResponse<List<SolicitudAusenciaResponse>> listarPorTenantPlataforma(
             @PathVariable("tenant_id") String tenantId
     ) {

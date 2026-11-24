@@ -25,15 +25,18 @@ public class SolicitudAusenciaService {
 
     private final SolicitudAusenciaRepository solicitudAusenciaRepository;
     private final TenantContext tenantContext;
+    private final AlcancePlataforma alcancePlataforma;
     private final OutboxPublisher outboxPublisher;
 
     public SolicitudAusenciaService(
             SolicitudAusenciaRepository solicitudAusenciaRepository,
             TenantContext tenantContext,
-            OutboxPublisher outboxPublisher
+            OutboxPublisher outboxPublisher,
+            AlcancePlataforma alcancePlataforma
     ) {
         this.solicitudAusenciaRepository = solicitudAusenciaRepository;
         this.tenantContext = tenantContext;
+        this.alcancePlataforma = alcancePlataforma;
         this.outboxPublisher = outboxPublisher;
     }
 
@@ -50,7 +53,7 @@ public class SolicitudAusenciaService {
     }
 
     public List<SolicitudAusenciaResponse> listarPorTenantPlataforma(String tenantId) {
-        exigirOperadorSaas();
+        alcancePlataforma.exigir(tenantContext.current(), tenantId);
         return solicitudAusenciaRepository.findByTenantIdOrderByCreadoEnDesc(tenantId)
                 .stream()
                 .map(this::toResponse)
@@ -70,6 +73,7 @@ public class SolicitudAusenciaService {
     }
 
     public SolicitudAusenciaResponse obtener(String solicitudId) {
+        rechazarRolDePlataforma();
         TenantContext.AuthenticatedUser actor = tenantContext.require();
         SolicitudAusencia solicitud = solicitudAusenciaRepository.findByIdAndTenantId(solicitudId, actor.tenantId())
                 .orElseThrow(() -> new DomainException(404, "Solicitud no encontrada"));
@@ -95,6 +99,7 @@ public class SolicitudAusenciaService {
 
     @Transactional
     public SolicitudAusenciaResponse solicitar(SolicitarAusenciaFrontendRequest request) {
+        rechazarRolDePlataforma();
         TenantContext.AuthenticatedUser actor = tenantContext.require();
         String authority = Roles.authorityFromClaim(actor.role());
         String trabajadorId;
@@ -213,10 +218,14 @@ public class SolicitudAusenciaService {
         );
     }
 
-    private void exigirOperadorSaas() {
-        TenantContext.AuthenticatedUser actor = tenantContext.require();
-        if (!Roles.OPERADOR_SAAS.equals(Roles.authorityFromClaim(actor.role()))) {
-            throw new DomainException(403, "Acceso exclusivo para el operador SaaS");
+    /**
+     * Rutas abiertas a todo usuario autenticado: un rol de plataforma no crea ni lee ausencias de una empresa
+     * (fuera de alcance de ADR-020), aunque su token conserve un custom:tenant_id antiguo.
+     */
+    private void rechazarRolDePlataforma() {
+        String authority = Roles.authorityFromClaim(tenantContext.current().role());
+        if (Roles.ADMIN_PLATAFORMA.equals(authority) || Roles.OPERADOR_SAAS.equals(authority)) {
+            throw new DomainException(403, "Acceso exclusivo para usuarios de la empresa");
         }
     }
 }
