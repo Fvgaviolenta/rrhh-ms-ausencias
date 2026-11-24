@@ -2,6 +2,7 @@ package com.rrhh.ausencias.config;
 
 import com.rrhh.ausencias.security.JwtTenantConverter;
 import com.rrhh.ausencias.security.TenantCleanupFilter;
+import com.rrhh.ausencias.security.TenantSuspendidoFilter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -16,6 +17,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.util.StringUtils;
@@ -28,7 +30,7 @@ import java.util.List;
 @EnableMethodSecurity
 public class SecurityConfig {
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtTenantConverter converter, TenantCleanupFilter cleanup, CorsConfigurationSource corsConfigurationSource) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtTenantConverter converter, TenantCleanupFilter cleanup, TenantSuspendidoFilter suspendido, CorsConfigurationSource corsConfigurationSource) throws Exception {
         http.csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -37,7 +39,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth -> oauth.jwt(jwt -> jwt.jwtAuthenticationConverter(converter)))
-                .addFilterAfter(cleanup, UsernamePasswordAuthenticationFilter.class);
+                .addFilterAfter(cleanup, UsernamePasswordAuthenticationFilter.class)
+                // S6: después de validar el JWT (que llena el TenantContext), 403 si la empresa está suspendida.
+                .addFilterAfter(suspendido, BearerTokenAuthenticationFilter.class);
         return http.build();
     }
 
